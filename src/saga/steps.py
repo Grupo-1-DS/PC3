@@ -1,17 +1,20 @@
-"""Steps para la saga: definición base y pasos concretos.
-
-Ahora los steps persisten en un pequeño 'mock backend' basado en JSON
-ubicado en `src/saga/data/saga_store.json`. Cada execute escribe el
-cambio y cada rollback lo revierte en ese archivo además de actualizar
-el `context` en memoria.
 """
+Steps para la saga: definición base y pasos concretos.
+
+Arreglado para evitar bucles infinitos:
+- Los steps solo escriben en Outbox cuando los ejecuta el ORCHESTRATOR.
+- Cuando los ejecuta el CONSUMER, no escriben en Outbox.
+"""
+
 from typing import Any, Dict, Optional
 import json
 import logging
 from pathlib import Path
 
+# Outbox para registrar cada step ejecutado
+from .outbox.outbox import record_outbox
 
-ROOT = Path(__file__).resolve().parents[2]
+
 STORE_PATH = Path(__file__).resolve().parent / "data" / "saga_store.json"
 
 
@@ -36,9 +39,12 @@ def _write_store(data: Dict[str, Dict[str, Any]]) -> None:
 
 
 class Step:
-    """Clase base para un Step en la saga."""
+    """
+    Definición básica de un Step.
+    Ahora recibe un flag from_consumer para evitar doble registro Outbox.
+    """
 
-    def execute(self, context: Dict[str, Any]) -> Any:
+    def execute(self, context: Dict[str, Any], from_consumer: bool = False) -> Any:
         raise NotImplementedError()
 
     def rollback(self, context: Dict[str, Any]) -> None:
@@ -46,74 +52,72 @@ class Step:
 
 
 class ProvisionUser(Step):
-    """Step que 'provisiona' un usuario y lo persiste en el store JSON.
 
-    kwargs aceptados: name, user_id, fail
-    """
-
-    def __init__(
-        self,
-        name: str = "user",
-        user_id: Optional[str] = None,
-        fail: bool = False,
-    ):
+    def __init__(self, name="user", user_id=None, fail=False):
         self.name = name
         self.user_id = user_id or f"{name}-id"
         self.fail = fail
         self._logger = logging.getLogger(__name__)
 
-    def execute(self, context: Dict[str, Any]) -> Dict[str, Any]:
+    def execute(self, context: Dict[str, Any], from_consumer=False) -> Dict[str, Any]:
         if self.fail:
-            self._logger.error("ProvisionUser failed for %s", self.name)
             raise RuntimeError("ProvisionUser failed")
 
         user = {"id": self.user_id, "name": self.name}
-        # Guardar en context en memoria
+
+        # Guardar en context
         context["user"] = user
 
-        # Persistir en el store JSON
+        # Persistir en store
         store = _read_store()
-        store.setdefault("users", {})[self.user_id] = user
+        store["users"][self.user_id] = user
         _write_store(store)
+
+        # SOLO EL ORCHESTRATOR REGISTRA OUTBOX
+        if not from_consumer:
+            record_outbox({
+                "step": "ProvisionUser",
+                "type": "provision_user",
+                "user_id": self.user_id,
+                "name": self.name,
+                "context_saga": context.get("_saga_id"),
+            })
 
         self._logger.info("Provisioned user: %s (%s)", self.name, self.user_id)
         return user
 
-    def rollback(self, context: Dict[str, Any]) -> None:
-        # Eliminar del context y del store
-        context.pop("user", None)
-        store = _read_store()
-        if store.get("users") and self.user_id in store["users"]:
-            del store["users"][self.user_id]
-            _write_store(store)
-        self._logger.info("Rolled back ProvisionUser: %s", self.name)
-
 
 class AssignPermissions(Step):
-    """Step que asigna permisos a un usuario y lo persiste en el store."""
 
-    def __init__(self, permissions=None, fail: bool = False):
+    def __init__(self, permissions=None, fail=False):
         self.permissions = permissions or ["read"]
         self.fail = fail
         self._logger = logging.getLogger(__name__)
 
-    def execute(self, context: Dict[str, Any]) -> Dict[str, Any]:
+    def execute(self, context: Dict[str, Any], from_consumer=False) -> Dict[str, Any]:
         if self.fail:
-            self._logger.error("AssignPermissions simulated failure")
             raise RuntimeError("AssignPermissions failed")
 
         user = context.get("user")
         if not user:
             raise RuntimeError("No user in context to assign perms")
 
-        # Actualizar context
         context["permissions"] = list(self.permissions)
 
-        # Persistir en store
+        # Persistir
         store = _read_store()
-        perms = list(self.permissions)
-        store.setdefault("permissions", {})[user["id"]] = perms
+        store["permissions"][user["id"]] = list(self.permissions)
         _write_store(store)
+
+        # SOLO ORCHESTRATOR CREA OUTBOX
+        if not from_consumer:
+            record_outbox({
+                "step": "AssignPermissions",
+                "type": "assign_permissions",
+                "user_id": user["id"],
+                "permissions": list(self.permissions),
+                "context_saga": context.get("_saga_id"),
+            })
 
         self._logger.info(
             "Assigned permissions %s to user %s",
@@ -122,39 +126,18 @@ class AssignPermissions(Step):
         )
         return {"user": user, "permissions": context["permissions"]}
 
-    def rollback(self, context: Dict[str, Any]) -> None:
-        # Eliminar permisos del context y del store
-        user = context.get("user")
-        context.pop("permissions", None)
-        if user:
-            store = _read_store()
-            if (
-                store.get("permissions")
-                and user.get("id") in store["permissions"]
-            ):
-                del store["permissions"][user.get("id")]
-                _write_store(store)
-            self._logger.info("Rolled back AssignPermissions")
-
 
 class CreateQuota(Step):
-    """Step que crea/asigna una cuota al usuario y lo persiste en el store."""
 
-    def __init__(
-        self,
-        quota_values=None,
-        fail: bool = False,
-        quota_id: Optional[str] = None,
-    ):
-        default_vals = {"storage_gb": 10, "ops_per_month": 1000}
-        self.quota_values = quota_values or default_vals
+    def __init__(self, quota_values=None, fail=False, quota_id=None):
+        default = {"storage_gb": 10, "ops_per_month": 1000}
+        self.quota_values = quota_values or default
         self.fail = fail
         self.quota_id = quota_id or "quota-1"
         self._logger = logging.getLogger(__name__)
 
-    def execute(self, context: Dict[str, Any]) -> Dict[str, Any]:
+    def execute(self, context: Dict[str, Any], from_consumer=False) -> Dict[str, Any]:
         if self.fail:
-            self._logger.error("CreateQuota simulated failure")
             raise RuntimeError("CreateQuota failed")
 
         user = context.get("user")
@@ -163,28 +146,27 @@ class CreateQuota(Step):
 
         quota = {
             "id": self.quota_id,
-            "user_id": user.get("id"),
+            "user_id": user["id"],
             "values": dict(self.quota_values),
         }
+
         context["quota"] = quota
 
         # Persistir
         store = _read_store()
-        store.setdefault("quotas", {})[self.quota_id] = quota
+        store["quotas"][self.quota_id] = quota
         _write_store(store)
+
+        # SOLO ORCHESTRATOR CREA OUTBOX
+        if not from_consumer:
+            record_outbox({
+                "step": "CreateQuota",
+                "type": "create_quota",
+                "quota_id": self.quota_id,
+                "user_id": user["id"],
+                "values": dict(self.quota_values),
+                "context_saga": context.get("_saga_id"),
+            })
 
         self._logger.info("QuotaCreated: %s", quota)
         return quota
-
-    def rollback(self, context: Dict[str, Any]) -> None:
-        # Eliminar cuota del context y del store
-        quota = context.pop("quota", None)
-        store = _read_store()
-        if (
-            quota
-            and store.get("quotas")
-            and quota.get("id") in store["quotas"]
-        ):
-            del store["quotas"][quota.get("id")]
-            _write_store(store)
-        self._logger.info("Rolled back CreateQuota: %s", self.quota_id)

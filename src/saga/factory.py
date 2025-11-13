@@ -26,3 +26,9 @@ def register_defaults() -> None:
     StepFactory.register("provision_user", _steps.ProvisionUser)
     StepFactory.register("assign_permissions", _steps.AssignPermissions)
     StepFactory.register("create_quota", _steps.CreateQuota)
+
+
+try:
+    register_defaults()
+except Exception:
+    pass

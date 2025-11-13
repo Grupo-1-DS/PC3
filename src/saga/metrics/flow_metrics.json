@@ -1,0 +1,7 @@
+{
+  "executed": 0,
+  "compensated": 0,
+  "failed": 0,
+  "sent_to_dlq": 0,
+  "retries": 0
+}

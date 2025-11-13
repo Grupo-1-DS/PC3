@@ -1,44 +1,34 @@
-"""Orquestador de ejemplo que usa Factory y Mediator.
+import uuid
 
-Provee la función `run_demo(fail_assign=False)` que construye una
-secuencia de steps usando la `StepFactory` y la ejecuta con el
-`Mediator`.
-"""
-
-try:
-    from .factory import StepFactory, register_defaults
-    from .mediator import Mediator
-except Exception:
-    from src.saga.factory import StepFactory, register_defaults
-    from src.saga.mediator import Mediator
+from .factory import StepFactory
+from .mediator import Mediator
 
 
-def run_demo(fail_assign: bool = False):
-    """Crea y ejecuta la secuencia: provision -> quota -> assign.
+def run_demo(fail_assign=False):
 
-    Si `fail_assign=True` se fuerza el fallo en AssignPermissions para
-    probar la compensación (rollback).
-    """
-    register_defaults()
+    # Crear mediador
     mediator = Mediator()
 
-    provision = StepFactory.create("provision_user", name="alice")
-    mediator.register(provision)
-
-    quota = StepFactory.create(
-        "create_quota",
-        quota_values={"storage_gb": 10},
-        fail=False,
-    )
-    mediator.register(quota)
-
-    assign = StepFactory.create(
-        "assign_permissions",
-        permissions=["read", "write"],
-        fail=fail_assign,
-    )
-    mediator.register(assign)
-
+    # Contexto vacío → el Mediator crea el saga_id real
     context = {}
+
+    # Registrar steps en orden SAGA
+    mediator.register(StepFactory.create("provision_user", name="alice"))
+    mediator.register(StepFactory.create("create_quota"))
+    mediator.register(
+        StepFactory.create(
+            "assign_permissions",
+            permissions=["read", "write"],
+            fail=fail_assign
+        )
+    )
+
+    # Ejecutar steps → llenará el OUTBOX
     mediator.execute_all(context)
+
     return context
+
+
+if __name__ == "__main__":
+    ctx = run_demo()
+    print("Saga ID:", ctx["_saga_id"])
