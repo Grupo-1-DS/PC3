@@ -2,20 +2,30 @@ terraform {
   required_providers {
     docker = {
       source  = "kreuzwerker/docker"
-      version = "~> 3.0"
+      version = "3.6.2"
     }
   }
-
-  required_version = ">= 1.3.0"
 }
 
 provider "docker" {}
 
-module "rabbitmq" {
-  source = "./rabbitmq"
-
-  rabbitmq_image          = var.rabbitmq_image
-  rabbitmq_container_name = var.rabbitmq_container_name
-  amqp_port               = var.amqp_port
-  ui_port                 = var.ui_port
+resource "docker_network" "saga_net" {
+  name = "saga-net"
 }
+
+resource "docker_container" "rabbitmq" {
+  image = var.rabbitmq_image
+  name  = var.rabbitmq_container_name
+  ports {
+    internal = var.amqp_port
+    external = var.amqp_port
+  }
+  ports {
+    internal = var.ui_port
+    external = var.ui_port
+  }
+  networks_advanced {
+    name = docker_network.saga_net.name
+  }
+}
+
