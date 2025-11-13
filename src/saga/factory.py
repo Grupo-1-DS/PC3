@@ -4,6 +4,7 @@ Permite registrar clases de Step y crear instancias con kwargs.
 """
 from typing import Dict, Type
 from .steps import Step
+from . import steps
 
 
 class StepFactory:
@@ -22,13 +23,6 @@ class StepFactory:
 
 
 def register_defaults() -> None:
-    from . import steps as _steps
-    StepFactory.register("provision_user", _steps.ProvisionUser)
-    StepFactory.register("assign_permissions", _steps.AssignPermissions)
-    StepFactory.register("create_quota", _steps.CreateQuota)
-
-
-try:
-    register_defaults()
-except Exception:
-    pass
+    StepFactory.register("provision_user", steps.ProvisionUser)
+    StepFactory.register("assign_permissions", steps.AssignPermissions)
+    StepFactory.register("create_quota", steps.CreateQuota)

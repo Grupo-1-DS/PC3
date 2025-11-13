@@ -14,7 +14,6 @@ def run_demo(fail_assign=False):
 
     # Registrar steps en orden SAGA
     mediator.register(StepFactory.create("provision_user", name="alice"))
-    mediator.register(StepFactory.create("create_quota"))
     mediator.register(
         StepFactory.create(
             "assign_permissions",
@@ -22,6 +21,8 @@ def run_demo(fail_assign=False):
             fail=fail_assign
         )
     )
+    mediator.register(StepFactory.create("create_quota"))
+
 
     # Ejecutar steps → llenará el OUTBOX
     mediator.execute_all(context)
