@@ -7,84 +7,34 @@ Arreglado para evitar bucles infinitos:
 """
 
 from typing import Any, Dict, Optional
+from abc import ABC, abstractmethod
 import json
 import logging
 from pathlib import Path
 
-# Outbox para registrar cada step ejecutado
-from .outbox.outbox import record_outbox
 
-
-STORE_PATH = Path(__file__).resolve().parent / "data" / "saga_store.json"
-
-
-def _ensure_store() -> None:
-    STORE_PATH.parent.mkdir(parents=True, exist_ok=True)
-    if not STORE_PATH.exists():
-        initial = {"users": {}, "quotas": {}, "permissions": {}}
-        STORE_PATH.write_text(json.dumps(initial))
-
-
-def _read_store() -> Dict[str, Dict[str, Any]]:
-    _ensure_store()
-    try:
-        return json.loads(STORE_PATH.read_text())
-    except Exception:
-        return {"users": {}, "quotas": {}, "permissions": {}}
-
-
-def _write_store(data: Dict[str, Dict[str, Any]]) -> None:
-    _ensure_store()
-    STORE_PATH.write_text(json.dumps(data, indent=2))
-
-
-class Step:
-    """
-    Definición básica de un Step.
-    Ahora recibe un flag from_consumer para evitar doble registro Outbox.
-    """
-
-    def execute(self, context: Dict[str, Any], from_consumer: bool = False) -> Any:
-        raise NotImplementedError()
-
+class Step(ABC):
+    @abstractmethod
+    def execute(self, context: Dict[str, Any]) -> Any:
+        pass
+    @abstractmethod
     def rollback(self, context: Dict[str, Any]) -> None:
-        return None
+        pass
 
 
 class ProvisionUser(Step):
 
-    def __init__(self, name="user", user_id=None, fail=False):
-        self.name = name
-        self.user_id = user_id or f"{name}-id"
+    def __init__(self, step_name="ProvisionUser", fail=False):
+        self.name = step_name
         self.fail = fail
-        self._logger = logging.getLogger(__name__)
 
-    def execute(self, context: Dict[str, Any], from_consumer=False) -> Dict[str, Any]:
+    def execute(self, data: Dict[str, Any]) -> Dict[str, Any]:
         if self.fail:
             raise RuntimeError("ProvisionUser failed")
 
+
+
         user = {"id": self.user_id, "name": self.name}
-
-        # Guardar en context
-        context["user"] = user
-
-        # Persistir en store
-        store = _read_store()
-        store["users"][self.user_id] = user
-        _write_store(store)
-
-        # SOLO EL ORCHESTRATOR REGISTRA OUTBOX
-        if not from_consumer:
-            record_outbox({
-                "step": "ProvisionUser",
-                "type": "provision_user",
-                "user_id": self.user_id,
-                "name": self.name,
-                "context_saga": context.get("_saga_id"),
-            })
-
-        self._logger.info("Provisioned user: %s (%s)", self.name, self.user_id)
-        return user
 
 
 class AssignPermissions(Step):

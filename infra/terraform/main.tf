@@ -7,6 +7,7 @@ terraform {
   }
 }
 
+# Configuración del proveedor de Docker
 provider "docker" {}
 
 resource "docker_network" "saga_net" {

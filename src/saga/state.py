@@ -10,7 +10,7 @@ class SagaState(Enum):
     COMPENSATED = auto()
 
 
-class Saga:
+""" class Saga:
     def __init__(self, saga_id: str):
         self.id = saga_id
         self.state = SagaState.PENDING
@@ -30,4 +30,4 @@ class Saga:
         self.state = SagaState.COMPENSATING
 
     def compensated(self):
-        self.state = SagaState.COMPENSATED
+        self.state = SagaState.COMPENSATED """
