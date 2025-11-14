@@ -3,15 +3,17 @@ DIST_DIR := dist
 SRC_DIR := src
 TEST_DIR := tests
 INFRA_DIR := infra
-DOCS_DIR := docs
 
 .PHONY: help tools plan apply run test pack clean
 
 help: ## Muestra los targets disponibles
 	@grep -E '^[a-zA-Z0-9_-]+:.*?## ' $(MAKEFILE_LIST) | awk -F':|##' '{printf "  %-12s %s\n", $$1, $$3}'
 
-tools: ## Verifica que las dependencias necesarias estén instaladas
-	@$(SRC_DIR)/check_tools.sh
+build: ## Crear un entorno virtual para el proyecto
+	@python3 -m venv venv && ./venv/bin/activate
+
+tools: ## Instalar las dependencias necesarias para el proyecto
+	@pip install -r requirements.txt
 
 plan: ## Mostrar el plan de ejecución de Terraform y los recursos que se crearán
 	@cd $(INFRA_DIR)/terraform && terraform init && terraform plan
