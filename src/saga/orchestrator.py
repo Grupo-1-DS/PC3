@@ -30,10 +30,10 @@ class SagaOrchestrator(Saga):
         self.steps = []
         self.completed = []
 
-    def send_data(self, provision_data, permissions_data, quota_data):
-        step1 = StepFactory.create("provision_user", data=provision_data)
-        step2 = StepFactory.create("assign_permissions", permissions=permissions_data)
-        step3 = StepFactory.create("create_quota", quota_values=quota_data)
+    def send_data(self, raw_data):
+        step1 = StepFactory.create("provision_user", data=raw_data)
+        step2 = StepFactory.create("assign_permissions", data=raw_data)
+        step3 = StepFactory.create("create_quota", data=raw_data)
         self.steps = [step1, step2, step3]
 
     def execute_saga(self):
@@ -54,7 +54,6 @@ class SagaOrchestrator(Saga):
     def compensate(self):
         print("🔁 Iniciando compensación...")
         self.state = SagaState.COMPENSATING
-        print(self.completed)
         for step in reversed(self.completed):
             step.rollback()
         print("✅ Compensación completada")

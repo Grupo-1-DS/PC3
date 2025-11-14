@@ -1,35 +1,57 @@
 from typing import Any, Dict, Optional
 from abc import ABC, abstractmethod
 import json
+import time
 import sqlite3
+import uuid
 import pika
 
 def get_connection(db_type):
         return sqlite3.connect(f'db/{db_type}.db')
 
-def send_to_rabbit(event: dict):
-    connection = pika.BlockingConnection(
-        pika.ConnectionParameters("localhost")
-    )
+def rpc_call(event: dict, timeout: float = 5.0) -> dict:
+    connection = pika.BlockingConnection(pika.ConnectionParameters('localhost'))
     channel = connection.channel()
-    channel.queue_declare(queue="saga_commands", durable=True)
+
+    result = channel.queue_declare(queue='', exclusive=True)
+    callback_queue = result.method.queue
+
+    corr_id = str(time.time())
+    response = {'received': False, 'body': None}
+
+    def on_response(ch, method, props, body):
+        if props.correlation_id == corr_id:
+            response['body'] = json.loads(body)
+            response['received'] = True
+
+    channel.basic_consume(queue=callback_queue, on_message_callback=on_response, auto_ack=True)
 
     channel.basic_publish(
-        exchange="saga_exchange",
-        routing_key="saga_commands",
+        exchange='saga_exchange',
+        routing_key='saga_commands',
         body=json.dumps(event),
         properties=pika.BasicProperties(
-            delivery_mode=2
+            reply_to=callback_queue,
+            correlation_id=corr_id,
+            delivery_mode=2,
         ),
     )
+
+    start = time.time()
+    while not response['received'] and (time.time() - start) < timeout:
+        connection.process_data_events(time_limit=0.1)
+
     connection.close()
+
+    return response['body']
 
 class Step(ABC):
     @abstractmethod
-    def execute(self, context: Dict[str, Any]) -> Any:
+    def execute(self, *args, **kwargs) -> Any:
         pass
+
     @abstractmethod
-    def rollback(self, context: Dict[str, Any]) -> None:
+    def rollback(self, *args, **kwargs) -> None:
         pass
 
 
@@ -42,34 +64,33 @@ class ProvisionUser(Step):
 
     def execute(self) -> None:
         if self.fail:
-            raise RuntimeError("ProvisionUser failed")
-        
+            raise RuntimeError("ProvisionUser falló")
+
+        user_id = self.data["user"]["id"]
+        user_name = self.data["user"]["name"]
+        user_email = self.data["user"]["email"]
+
+        conn = get_connection("users")
+        cursor = conn.cursor()
+
         try:
-            user_id = self.data.get("id")
-            user_name = self.data.get("name")
-            user_email = self.data.get("email")
-        
-            conn = get_connection("users")
-            cursor = conn.cursor()
             cursor.execute(
                 "INSERT INTO users (id, name, email) VALUES (?, ?, ?)",
                 (user_id, user_name, user_email),
             )
-
-            event = {
-                "type": "AssignPermissions",
-                "data": {
-                    "id": user_id,
-                },
-            }
-
-            send_to_rabbit(event)
-
             conn.commit()
-            conn.close()
+
+            result = rpc_call(
+                {"type": "ProvisionUser", "data": {"id": user_id}})
+            
+            if(result.get('status') != 'ok'):
+                raise RuntimeError(f"Error al procesar el registro en broker: {result}")
+
         except Exception as e:
-            pass
-    
+            raise RuntimeError(f"Fallo al registrar usuario: {e}")
+        finally:
+            conn.close()
+            
     def rollback(self):
         print("Rollback ProvisionUser")
 
@@ -77,58 +98,83 @@ class ProvisionUser(Step):
 
 class AssignPermissions(Step):
 
-    def __init__(self,step_name="AssignPermissions", permissions=None, fail=False):
+    def __init__(self, step_name="AssignPermissions", data=None, fail=False):
         self.name = step_name
-        self.permissions = permissions or ["read"]
+        self.data = data or {}
         self.fail = fail
 
     def execute(self) -> None:
         if self.fail:
-            raise RuntimeError("AssignPermissions failed")
-        
+            raise RuntimeError("AssignPermissions falló")
+
+        user_id = self.data["user"]["id"]
+        permissions = self.data["permissions"]
+
+        conn = get_connection("permissions")
+        cursor = conn.cursor()
+
         try:
-            conn = get_connection("permissions")
-            cursor = conn.cursor()
-            
-            permissions = self.permissions 
             cursor.execute(
                 "INSERT INTO permissions (user_id, permissions) VALUES (?, ?)",
-                (user_id, json.dumps(self.permissions)),
+                (user_id, json.dumps(permissions)),
             )
-            conn.commit()
-            conn.close()
-        except Exception as e:
-            pass
 
+            conn.commit()
+
+            result = rpc_call(
+                {"type": "AssignPermissions", "data": {"id": user_id}})
+            
+            if(result.get('status') != 'ok'):
+                raise RuntimeError(f"Error al procesar el registro en broker: {result}")
+            
+        except Exception as e:
+            raise RuntimeError(f"Fallo al asignar permisos: {e}")
+
+        finally:
+            conn.close()
+        
+        
     def rollback(self) -> None:
         print("Rollback AssignPermissions")
 
 
 class CreateQuota(Step):
 
-    def __init__(self, step_name="CreateQuota", quota_values=None, fail=False):
+    def __init__(self, step_name="CreateQuota", data=None, fail=False):
         self.name = step_name
-        default = {"storage_gb": 10, "ops_per_month": 1000}
-        self.quota_values = quota_values or default
+        self.data = data or {}
         self.fail = fail
 
-    def execute(self, context: Dict[str, Any], from_consumer=False) -> Dict[str, Any]:
+    def execute(self) -> None:
         if self.fail:
             raise RuntimeError("CreateQuota failed")
 
-        user = context.get("user")
-        if not user:
-            raise RuntimeError("No user in context to attach quota")
+        quota_id = str(uuid.uuid4())
+        user_id = self.data["user"]["id"]
+        storage_gb = self.data["quota"]["storage_gb"]
+        ops_per_month = self.data["quota"]["ops_per_month"]
 
-        quota = {
-            "id": self.quota_id,
-            "user_id": user["id"],
-            "values": dict(self.quota_values),
-        }
+        
+        conn = get_connection("quotas")
+        cursor = conn.cursor()
 
-        context["quota"] = quota
+        try:
+            cursor.execute(
+                "INSERT INTO quotas (id, user_id, storage_gb, ops_per_month) VALUES (?, ?, ?, ?)",
+                (quota_id, user_id, storage_gb, ops_per_month),
+            )
 
-        return quota
-    
+            conn.commit()
+
+            result = rpc_call(
+                {"type": "CreateQuota",
+                "data": {"id": user_id,}})
+
+            if(result.get('status') != 'ok'):
+                raise RuntimeError(f"Error al procesar la quota en el broker: {result}")
+            
+        except Exception as e:
+            raise RuntimeError(f"Fallo al crear quota: {e}")
+
     def rollback(self, context: Dict[str, Any]) -> None:
         print("Rollback CreateQuota")

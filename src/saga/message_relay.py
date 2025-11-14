@@ -7,18 +7,19 @@ DB_PATH = "./db/users.db"
 
 def send_to_rabbit(event: dict):
     connection = pika.BlockingConnection(
-        pika.ConnectionParameters("localhost")
+        pika.ConnectionParameters('localhost')
     )
     channel = connection.channel()
-    channel.queue_declare(queue="saga_commands", durable=True)
+
+    channel.queue_declare(queue='saga_commands', durable=True)
 
     channel.basic_publish(
-        exchange="saga_exchange",
-        routing_key="saga_commands",
+        exchange='saga_exchange',
+        routing_key='saga_commands',
         body=json.dumps(event),
         properties=pika.BasicProperties(
-            delivery_mode=2
-        ),
+            delivery_mode=2  
+        )
     )
 
     connection.close()
