@@ -1,35 +1,34 @@
-import uuid
+from saga.mediator import StepMediator
+from saga.factory import StepFactory
 
-from .factory import StepFactory
-from .mediator import Mediator
+class SagaOrchestrator:
+    def __init__(self):
+        self.state = "PENDING"
+        self.mediator = StepMediator()
+        self.steps = [
+            StepFactory.create_step("provision_user"),
+            StepFactory.create_step("assign_permissions")
+        ]
+        self.completed = []
 
+    def execute(self):
+        print("🔄 Iniciando Saga Orchestrator...")
+        self.state = "RUNNING"
+        try:
+            for step in self.steps:
+                print(f"➡️ Ejecutando paso: {step.name}")
+                self.mediator.execute(step)
+                self.completed.append(step)
+            self.state = "SUCCEEDED"
+            print("✅ Saga completada exitosamente")
+        except Exception as e:
+            print(f"❌ Fallo en {step.name}: {e}")
+            self._compensate()
+            self.state = "COMPENSATED"
 
-def run_demo(fail_assign=False):
-
-    # Crear mediador
-    mediator = Mediator()
-
-    # Contexto vacío → el Mediator crea el saga_id real
-    context = {}
-
-    # Registrar steps en orden SAGA
-    mediator.register(StepFactory.create("provision_user", name="alice"))
-    mediator.register(
-        StepFactory.create(
-            "assign_permissions",
-            permissions=["read", "write"],
-            fail=fail_assign
-        )
-    )
-    mediator.register(StepFactory.create("create_quota"))
-
-
-    # Ejecutar steps → llenará el OUTBOX
-    mediator.execute_all(context)
-
-    return context
-
-
-if __name__ == "__main__":
-    ctx = run_demo()
-    print("Saga ID:", ctx["_saga_id"])
+    def _compensate(self):
+        print("♻️ Iniciando compensación...")
+        self.state = "COMPENSATING"
+        for step in reversed(self.completed):
+            step.compensate()
+        print("🔁 Compensación completada")
