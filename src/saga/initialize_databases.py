@@ -18,6 +18,14 @@ def initialize_database_by_type(db_types):
                     email TEXT NOT NULL
                 )
             ''')
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS outbox (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    step TEXT NOT NULL,
+                    payload TEXT NOT NULL,
+                    processed INTEGER DEFAULT 0
+                )
+            ''')
         elif(db_type == "permissions"):
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS permissions (
