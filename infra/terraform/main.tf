@@ -10,10 +10,6 @@ terraform {
 # Configuración del proveedor de Docker
 provider "docker" {}
 
-resource "docker_network" "saga_net" {
-  name = "saga-net"
-}
-
 resource "docker_container" "rabbitmq" {
   image = var.rabbitmq_image
   name  = var.rabbitmq_container_name
@@ -24,9 +20,6 @@ resource "docker_container" "rabbitmq" {
   ports {
     internal = var.ui_port
     external = var.ui_port
-  }
-  networks_advanced {
-    name = docker_network.saga_net.name
   }
 }
 
