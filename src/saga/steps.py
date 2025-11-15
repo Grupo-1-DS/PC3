@@ -66,7 +66,7 @@ class ProvisionUser(Step):
         if self.fail:
             raise RuntimeError("ProvisionUser falló")
 
-        user_id = self.data["user"]["id"]
+        user_id = self.data["user"]["id"] or None
         user_name = self.data["user"]["name"]
         user_email = self.data["user"]["email"]
 
@@ -79,12 +79,14 @@ class ProvisionUser(Step):
                 (user_id, user_name, user_email),
             )
             conn.commit()
-
+                        
             result = rpc_call(
                 {"type": "ProvisionUser", "data": {"id": user_id}})
             
             if(result.get('status') != 'ok'):
                 raise RuntimeError(f"Error al procesar el registro en broker: {result}")
+
+            print("     - Datos de usuario insertado en tabla users:", user_id, user_name, user_email)
 
         except Exception as e:
             raise RuntimeError(f"Fallo al registrar usuario: {e}")
@@ -92,7 +94,18 @@ class ProvisionUser(Step):
             conn.close()
             
     def rollback(self):
-        print("Rollback ProvisionUser")
+        conn = get_connection("users")
+        cursor = conn.cursor()
+        try:
+            user_id = self.data["user"]["id"]
+            cursor.execute("DELETE FROM users WHERE id=?", (user_id,))
+            conn.commit()
+
+            print(f"     - Rollback: Usuario eliminado con ID {user_id} de tabla users")
+        except Exception as e:
+            print(f"Fallo al hacer rollback de ProvisionUser: {e}")
+        finally:
+            conn.close()
 
 
 
@@ -108,6 +121,7 @@ class AssignPermissions(Step):
             raise RuntimeError("AssignPermissions falló")
 
         user_id = self.data["user"]["id"]
+        user_name = self.data["user"]["name"]
         permissions = self.data["permissions"]
 
         conn = get_connection("permissions")
@@ -126,7 +140,9 @@ class AssignPermissions(Step):
             
             if(result.get('status') != 'ok'):
                 raise RuntimeError(f"Error al procesar el registro en broker: {result}")
-            
+
+            print(f"     - Permisos asignados a user {user_name} en tabla permissions:", permissions)
+
         except Exception as e:
             raise RuntimeError(f"Fallo al asignar permisos: {e}")
 
@@ -135,7 +151,18 @@ class AssignPermissions(Step):
         
         
     def rollback(self) -> None:
-        print("Rollback AssignPermissions")
+        conn = get_connection("permissions")
+        cursor = conn.cursor()
+        try:
+            user_id = self.data["user"]["id"]
+            cursor.execute("DELETE FROM permissions WHERE user_id=?", (user_id,))
+            conn.commit()
+
+            print(f"     - Rollback: Permisos eliminados para user {user_id} en tabla permissions")
+        except Exception as e:
+            print(f"Fallo al hacer rollback de AssignPermissions: {e}")
+        finally:
+            conn.close()
 
 
 class CreateQuota(Step):
@@ -147,7 +174,7 @@ class CreateQuota(Step):
 
     def execute(self) -> None:
         if self.fail:
-            raise RuntimeError("CreateQuota failed")
+            raise RuntimeError("CreateQuota fallló")
 
         quota_id = str(uuid.uuid4())
         user_id = self.data["user"]["id"]
@@ -173,8 +200,21 @@ class CreateQuota(Step):
             if(result.get('status') != 'ok'):
                 raise RuntimeError(f"Error al procesar la quota en el broker: {result}")
             
+            print(f"     - Quota creada con ID {quota_id} para user {user_id} en tabla quotas")
+
         except Exception as e:
             raise RuntimeError(f"Fallo al crear quota: {e}")
 
     def rollback(self, context: Dict[str, Any]) -> None:
-        print("Rollback CreateQuota")
+        conn = get_connection("quotas")
+        cursor = conn.cursor()
+        try:
+            user_id = self.data["user"]["id"]
+            cursor.execute("DELETE FROM quotas WHERE user_id=?", (user_id,))
+            conn.commit()
+
+            print(f"     - Rollback: Quota eliminada para user {user_id} en tabla quotas")
+        except Exception as e:
+            print(f"Fallo al hacer rollback de CreateQuota: {e}")
+        finally:
+            conn.close()

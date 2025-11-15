@@ -22,6 +22,7 @@ apply: ## Aplicar el plan de ejecución de Terraform creando los recursos de la 
 	@cd $(INFRA_DIR)/terraform && terraform apply -auto-approve
 
 run: plan apply ## Ejecutar el orquestador saga
+	@python3 $(SRC_DIR)/saga/initialize_databases.py
 	@python3 $(SRC_DIR)/saga/orchestrator.py
 
 test: ## Ejecutar pruebas unitarias y pruebas end to end (e2e)
@@ -34,3 +35,4 @@ pack: ## Empaqueta el release del proyecto
 clean: ## Limpiar archivos generados
 	@rm -rf $(DIST_DIR)
 	@cd $(INFRA_DIR)/terraform && terraform destroy -auto-approve
+	@cd $(SRC_DIR)/saga && python3 clean_databases.py

@@ -13,7 +13,7 @@ def initialize_database_by_type(db_types):
         if(db_type == "users"):
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS users (
-                    id TEXT PRIMARY KEY,
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
                     name TEXT NOT NULL,
                     email TEXT NOT NULL
                 )
