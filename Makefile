@@ -19,11 +19,11 @@ plan: ## Mostrar el plan de ejecución de Terraform y los recursos que se crear�
 	@cd $(INFRA_DIR)/terraform && terraform init && terraform plan
 
 apply: ## Aplicar el plan de ejecución de Terraform creando los recursos de la infraestructura
-	@cd $(INFRA_DIR)/terraform && terraform apply -auto-approve
+	cd $(INFRA_DIR)/terraform && terraform init && terraform apply -auto-approve
 
 run: plan apply ## Ejecutar el orquestador saga
 	@python3 $(SRC_DIR)/saga/initialize_databases.py
-	@python3 $(SRC_DIR)/saga/orchestrator.py
+	@cd $(SRC_DIR) && python3 -m saga
 
 test: ## Ejecutar pruebas unitarias y pruebas end to end (e2e)
 	@pytest $(TEST_DIR)
