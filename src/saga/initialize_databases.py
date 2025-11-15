@@ -15,7 +15,7 @@ def initialize_database_by_type(db_types):
         if (db_type == "users"):
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS users (
-                    id INTEGER PRIMARY KEY,
+                    id TEXT PRIMARY KEY,
                     name TEXT NOT NULL,
                     email TEXT NOT NULL
                 )

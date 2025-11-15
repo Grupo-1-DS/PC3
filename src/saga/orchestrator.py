@@ -1,6 +1,7 @@
 from factory import StepFactory
 from state import SagaState
 from steps import Step
+import time
 
 
 class Saga:
@@ -40,17 +41,48 @@ class SagaOrchestrator(Saga):
     def execute_saga(self):
         print("☸️ Iniciando Saga Orchestrator...")
         self.state = SagaState.RUNNING
+
         try:
             for step in self.steps:
                 print(f"➡️ Ejecutando paso: {step.name}")
-                step.execute()
+
+                try:
+                    response = step.execute()
+                except Exception as e:
+                    print(f"❌ Error en {step.name}: {e}")
+                    response = {"status": False}
+
+                status = response["status"]
+
+                # ---------- RETRIES ----------
+                if not status:
+                    for i in range(5):
+                        print(f"🔄 Retry {i+1} en {step.name}")
+
+                        try:
+                            response = (step.execute())
+                        except Exception as e:
+                            print(
+                                f"❌ Fallo en retry {i+1} de {step.name}: {e}")
+                            response = {"status": False}
+
+                        status = response["status"]
+                        if status:
+                            break
+
+                        time.sleep(2)
+
+                    if not status:
+                        print(
+                            f"❌ Fallo definitivo en {step.name} tras retries")
+                        self.compensate()
+                        return
+
                 self.completed.append(step)
-            self.state = SagaState.SUCCEEDED
-            print("✅ Saga completada exitosamente")
+            print("✅ Saga completada")
         except Exception as e:
-            print(f"❌ Fallo en {step.name}: {e}")
+            print(f"❌ Error inesperado en saga: {e}")
             self.compensate()
-            self.state = SagaState.COMPENSATED
 
     def compensate(self):
         print("🔁 Iniciando compensación...")

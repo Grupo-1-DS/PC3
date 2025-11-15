@@ -68,9 +68,6 @@ class ProvisionUser(Step):
     def execute(self) -> None:
         fail = self.data.get("fail")[0]
 
-        if fail:
-            raise RuntimeError("ProvisionUser falló")
-
         user_id = self.data["user"]["id"]
         user_name = self.data["user"]["name"]
         user_email = self.data["user"]["email"]
@@ -82,18 +79,20 @@ class ProvisionUser(Step):
                 "id": user_id,
                 "name": user_name,
                 "email": user_email,
+                "fail": fail
             }
         })
+
         if result.get('status') != 'ok':
-            raise RuntimeError(
-                f"Error al procesar el registro en broker: {result}")
+            return {"status": False}
         # Guardar el id real generado por el broker para rollback
-        self.data["db_id"] = result.get("id", user_id)
+        self.data["user_id"] = result.get("id")
         print("     - Solicitud de creación de usuario enviada al broker:",
-              user_id, user_name, user_email, "(db_id:", self.data["db_id"], ")")
+              user_id, user_name, user_email, "(db_id:", self.data["user_id"], ")")
+        return {"status": True}
 
     def rollback(self) -> None:
-        db_id = self.data.get("db_id")
+        db_id = self.data.get("user_id")
         if db_id is None:
             print("     - Rollback: No se tiene db_id para eliminar usuario")
             return
@@ -106,6 +105,9 @@ class ProvisionUser(Step):
         else:
             print(f"     - Fallo rollback usuario: {db_id} -> {result}")
 
+    def rlq(self):
+        return "Paso enviado a la cola"
+
 
 class AssignPermissions(Step):
     def __init__(self, step_name="AssignPermissions", data=None):
@@ -114,8 +116,6 @@ class AssignPermissions(Step):
 
     def execute(self) -> None:
         fail = self.data.get("fail")[1]
-        if fail:
-            raise RuntimeError("AssignPermissions falló")
 
         user_id = self.data["user"]["id"]
         permissions = self.data["permissions"]
@@ -126,17 +126,20 @@ class AssignPermissions(Step):
             "data": {
                 "id": user_id,
                 "permissions": permissions,
+                "fail": fail
             }
         })
+
         if result.get('status') != 'ok':
-            raise RuntimeError(
-                f"Error al procesar el registro en broker: {result}")
-        self.data["db_id"] = result.get("id")
+            return {"status": False}
+
+        self.data["permision_id"] = result.get("id")
         print(
-            f"     - Solicitud de asignación de permisos enviada al broker: {user_id}, {permissions} (db_id: {self.data['db_id']})")
+            f"     - Solicitud de asignación de permisos enviada al broker: {user_id}, {permissions} (db_id: {self.data['permision_id']})")
+        return {"status": True}
 
     def rollback(self) -> None:
-        db_id = self.data.get("db_id")
+        db_id = self.data.get("permision_id")
         if db_id is None:
             print("     - Rollback: No se tiene db_id para eliminar permisos")
             return
@@ -149,6 +152,9 @@ class AssignPermissions(Step):
         else:
             print(f"     - Fallo rollback permisos: {db_id} -> {result}")
 
+    def rlq(self):
+        return "Paso enviado a la cola"
+
 
 class CreateQuota(Step):
     def __init__(self, step_name="CreateQuota", data=None):
@@ -157,9 +163,6 @@ class CreateQuota(Step):
 
     def execute(self) -> None:
         fail = self.data.get("fail")[2]
-
-        if fail:
-            raise RuntimeError("CreateQuota fallló")
 
         quota_id = self.data["quota"].get("quota_id", str(uuid.uuid4()))
         user_id = self.data["user"]["id"]
@@ -174,17 +177,19 @@ class CreateQuota(Step):
                 "quota_id": quota_id,
                 "storage_gb": storage_gb,
                 "ops_per_month": ops_per_month,
+                "fail": fail
             }
         })
         if result.get('status') != 'ok':
-            raise RuntimeError(
-                f"Error al procesar la quota en el broker: {result}")
-        self.data["db_id"] = result.get("id")
+            return {"status": False}
+        self.data["qt_id"] = result.get("id")
         print(
-            f"     - Solicitud de creación de quota enviada al broker: {quota_id}, {user_id}, {storage_gb}, {ops_per_month} (db_id: {self.data['db_id']})")
+            f"     - Solicitud de creación de quota enviada al broker: {quota_id}, {user_id}, {storage_gb}, {ops_per_month} (db_id: {self.data['qt_id']})")
+
+        return {"status": True}
 
     def rollback(self) -> None:
-        db_id = self.data.get("db_id")
+        db_id = self.data.get("qt_id")
         if db_id is None:
             print("     - Rollback: No se tiene db_id para eliminar quota")
             return
@@ -196,3 +201,6 @@ class CreateQuota(Step):
             print(f"     - Rollback exitoso quota: {db_id}")
         else:
             print(f"     - Fallo rollback quota: {db_id} -> {result}")
+
+    def rlq(self):
+        return "Paso enviado a la cola"
