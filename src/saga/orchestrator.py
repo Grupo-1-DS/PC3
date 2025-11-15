@@ -8,29 +8,7 @@ import json
 import random
 
 
-class Saga:
-    def __init__(self, saga_id: str):
-        self.id = saga_id
-        self.state = SagaState.PENDING
-
-    def start(self):
-        self.state = SagaState.RUNNING
-
-    def succeed(self):
-        self.state = SagaState.SUCCEEDED
-
-    def fail(self, error: str):
-        self.state = SagaState.FAILED
-        self.error = error
-
-    def start_compensation(self):
-        self.state = SagaState.COMPENSATING
-
-    def compensated(self):
-        self.state = SagaState.COMPENSATED
-
-
-class SagaOrchestrator(Saga):
+class SagaOrchestrator():
     def __init__(self):
         self.state = SagaState.PENDING
         self.steps = []
@@ -64,11 +42,11 @@ class SagaOrchestrator(Saga):
 
                 if not status:
                     max_retries = 5
-                    base_delay = 1   # segundos
-                    max_delay = 60   # máximo 60s
+                    base_delay = 1
+                    max_delay = 60
 
                     for i in range(max_retries):
-                        # Registrar intento de retry
+
                         saga_metrics.record_retry()
 
                         # Backoff exponencial: base_delay * (2^i)
@@ -92,7 +70,7 @@ class SagaOrchestrator(Saga):
                             print(f"✅ Éxito en retry {i+1}")
                             break
 
-                        if i < max_retries - 1:  # No esperar después del último intento
+                        if i < max_retries - 1:
                             print(
                                 f"⏱ Esperando {wait_time:.2f}s antes del siguiente retry...")
                             time.sleep(wait_time)

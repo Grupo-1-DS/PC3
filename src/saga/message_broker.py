@@ -7,9 +7,11 @@ import os
 EXCHANGE_NAME = "saga_exchange"
 COMMAND_QUEUE_NAME = "saga_commands"
 DLQ_QUEUE_NAME = "saga_dlq"
-raw = os.getenv("FAILS", "false").lower()
+TEST_FAILS = os.getenv("FAILS", "false").lower() == "true"
 NUMBER_RANDOM = os.getenv("RANDOM", "false").lower() == "true"
-TEST_FAILS = raw == "true"
+
+print(f"TEST {TEST_FAILS}")
+print(f"NUMBER {NUMBER_RANDOM}")
 
 
 def get_connection(db_type):

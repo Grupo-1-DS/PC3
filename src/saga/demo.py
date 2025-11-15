@@ -35,7 +35,7 @@ def main():
             "storage_gb": 100,
             "ops_per_month": 10000
         },
-        "fail": [False, False, False]  # Ningún paso falla
+        "fail": [False, False, False]
     }
 
     saga = SagaOrchestrator()
@@ -60,7 +60,7 @@ def main():
             "storage_gb": 50,
             "ops_per_month": 5000
         },
-        "fail": [False, False, True]  # Falla en CreateQuota (paso 3)
+        "fail": [False, False, True]
     }
 
     saga2 = SagaOrchestrator()
