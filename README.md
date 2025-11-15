@@ -7,7 +7,8 @@ Implementación de un orquestador SAGA para gestionar transacciones distribuidas
 - Gabriel Castillejo Mendez
 - Albert Argumedo Rosales
 
-**Grabaciones**: <https://drive.google.com/drive/folders/1imHwL4w2BQUe6AHzS59ad04g1pGInjtx?usp=sharing>
+[Grabaciones](https://drive.google.com/drive/folders/1imHwL4w2BQUe6AHzS59ad04g1pGInjtx?usp=sharing)
+
 
 ## Qué hace
 
