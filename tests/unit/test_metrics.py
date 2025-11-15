@@ -1,7 +1,3 @@
-"""
-Tests simplificados para el sistema de métricas del SAGA Orchestrator
-Usa parametrize para casos clave sin ser excesivo
-"""
 from saga.metrics import saga_metrics
 from saga.orchestrator import SagaOrchestrator
 import sys
@@ -16,14 +12,11 @@ sys.path.insert(0, os.path.abspath(
 
 @pytest.fixture
 def fresh_metrics():
-    """Resetea la instancia global de métricas antes de cada test"""
     saga_metrics.reset()
     yield saga_metrics
-    # No necesitamos cleanup aquí porque el siguiente test hará reset
 
 
 def run_saga(name, email, fail_config):
-    """Helper para ejecutar un SAGA"""
     data = {
         "user": {"id": str(uuid.uuid4()), "name": name, "email": email},
         "permissions": ["read", "write"],
@@ -38,7 +31,6 @@ def run_saga(name, email, fail_config):
 class TestSagaMetrics:
 
     def test_successful_saga(self, fresh_metrics):
-        """Verifica métricas de un SAGA exitoso"""
         run_saga("Alice", "alice@test.com", [False, False, False])
 
         report = fresh_metrics.get_report()
@@ -52,7 +44,6 @@ class TestSagaMetrics:
         ([False, True, False], "AssignPermissions"),
     ])
     def test_failed_sagas(self, fresh_metrics, fail_config, expected_step):
-        """Verifica métricas de SAGAs fallidos en diferentes pasos"""
         run_saga("User", "user@test.com", fail_config)
 
         report = fresh_metrics.get_report()
@@ -62,7 +53,6 @@ class TestSagaMetrics:
         assert expected_step in report['step_failures']
 
     def test_metrics_tracking(self, fresh_metrics):
-        """Verifica que se trackeen tiempos y reintentos"""
         run_saga("Bob", "bob@test.com", [False, False, True])
 
         report = fresh_metrics.get_report()
@@ -72,12 +62,7 @@ class TestSagaMetrics:
 
 
 class TestMetricsIntegration:
-    """Test de integración completo"""
-
     def test_full_metrics_report(self, fresh_metrics):
-        """
-        Genera reporte completo ejecutando 5 SAGAs (3 exitosos, 2 fallidos)
-        """
         print("\n" + "="*70)
         print("📊 GENERANDO REPORTE COMPLETO DE MÉTRICAS")
         print("="*70)

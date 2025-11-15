@@ -1,7 +1,3 @@
-"""
-Test E2E con caos controlado para Sprint 3
-Simula fallos y verifica resiliencia del sistema
-"""
 from saga.metrics import saga_metrics
 from saga.orchestrator import SagaOrchestrator
 import sys
@@ -13,37 +9,27 @@ sys.path.insert(0, os.path.abspath(
     os.path.join(os.path.dirname(__file__), '../../src')))
 
 
-def run_saga_e2e(name, email, fail_config):
-    """Ejecuta un SAGA completo E2E"""
+def run_saga_e2e(name, email, fail_config, saga_orchestrator_instance):
     data = {
         "user": {"id": str(uuid.uuid4()), "name": name, "email": email},
         "permissions": ["read", "write"],
         "quota": {"storage_gb": 20, "ops_per_month": 2000},
         "fail": fail_config
     }
-    saga = SagaOrchestrator()
-    saga.send_data(data)
-    saga.execute_saga()
+    saga_orchestrator_instance.send_data(data)
+    saga_orchestrator_instance.execute_saga()
 
 
 class TestE2EChaos:
-    """Tests E2E con inyección de caos controlado"""
-
     def test_chaos_step_failure(self):
-        """
-        E2E: Fallo controlado en un paso
-        Verifica que el sistema se recupere con compensación
-        """
         print("\n" + "="*70)
-        print("**TEST E2E: Caos - Fallo en CreateQuota")
+        print("**TEST E2E: Fallo en CreateQuota")
         print("="*70)
 
         saga_metrics.reset()
 
-        # Ejecutar SAGA que fallará en el paso 3
         run_saga_e2e("ChaosUser", "chaos@test.com", [False, False, True])
 
-        # Validar que se compensó correctamente
         report = saga_metrics.get_report()
         assert report['total_sagas'] == 1
         assert report['compensation_rate'] == "100.00%"
@@ -62,7 +48,7 @@ class TestE2EChaos:
         E2E: Caos en diferentes puntos de fallo
         Verifica que la compensación sea proporcional al progreso
         """
-        print(f"\n🔥 Escenario: {scenario}")
+        print(f"\nEscenario: {scenario}")
 
         saga_metrics.reset()
         run_saga_e2e("User", "user@test.com", fail_config)
@@ -72,10 +58,6 @@ class TestE2EChaos:
         assert report['total_dlq_messages'] == 1
 
     def test_chaos_multiple_sagas_with_failures(self):
-        """
-        E2E: Múltiples SAGAs con y sin fallos
-        Genera informe de resiliencia completo
-        """
         print("\n" + "="*70)
         print(" TEST E2E: Múltiples SAGAs con caos")
         print("="*70)
@@ -104,8 +86,6 @@ class TestE2EChaos:
 
 
 class TestResilienceWithTrends:
-    """Test que genera informe con trends"""
-
     def test_resilience_report_with_trends(self):
         """
         Genera dos ejecuciones consecutivas y compara trends
@@ -150,7 +130,6 @@ class TestResilienceWithTrends:
             print(" Trends calculados correctamente")
         else:
             print("Primera ejecución - No hay datos previos para comparar")
-            # En la primera ejecución es normal que no haya trends
 
 
 if __name__ == "__main__":
