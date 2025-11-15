@@ -10,10 +10,6 @@ DLQ_QUEUE_NAME = "saga_dlq"
 TEST_FAILS = os.getenv("FAILS", "false").lower() == "true"
 NUMBER_RANDOM = os.getenv("RANDOM", "false").lower() == "true"
 
-print(f"TEST {TEST_FAILS}")
-print(f"NUMBER {NUMBER_RANDOM}")
-
-
 def get_connection(db_type):
     return sqlite3.connect(f'db/{db_type}.db')
 
