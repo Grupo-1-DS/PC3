@@ -86,21 +86,6 @@ El demo ejecuta 2 SAGAs (1 exitoso, 1 con fallo) y al final muestra el reporte d
 - `tests/unit/test_metrics.py` - Tests con parametrize
 - `src/saga/__main__.py` - Para ejecutar con `python -m saga`
 
-## Diferencias con Sprint 1
-
-Antes:
-
-- Reintentos con espera fija (2s)
-- Sin métricas
-- Sin DLQ
-- Tests básicos
-
-Ahora:
-
-- Backoff exponencial inteligente
-- Métricas completas y automáticas
-- DLQ para mensajes fallidos
-- Tests con parametrize
 
 ## Comandos útiles
 
