@@ -1,105 +1,62 @@
-## Documentación: Steps implementados y patrones usados
+# Sprint 1 - Orquestador SAGA con compensación
 
-Se crearon 3 steps para implementar la saga y demostrar ejecución
-y compensación (rollback) sobre un backend simulado (JSON):
+ **Objetivo:** Implementar un orquestador SAGA básico con al menos 2 pasos que soporten compensación automática.
+  
+## ¿Qué logramos?
 
-- Step 1: ProvisionUser
- 	- Qué hace: crea/provisiona un usuario en memoria y lo persiste en
-  el store JSON.
- 	- Por qué se implementó: simular el primer paso de aprovisionamiento
-  de un recurso dependiente (usuario) y generar efectos secundarios
-  que deben revertirse si un paso posterior falla.
- 	- Entradas (parámetros): `name` (str), `user_id` (str opcional),
-  `fail` (bool, para forzar fallo en pruebas).
- 	- Salida/efecto: añade `context['user'] = {id, name}` y escribe en
-  `src/saga/data/saga_store.json` bajo `users[user_id]`.
- 	- Rollback: elimina `context['user']` y borra la entrada del store
-  `users[user_id]`.
+Desarrollamos un orquestador SAGA que gestiona flujos de trabajo distribuidos con capacidad de deshacer cambios cuando algo sale mal. El caso de uso implementado es el aprovisionamiento de usuarios con tres pasos:
 
-- Step 2: AssignPermissions
- 	- Qué hace: asigna una lista de permisos a un usuario ya creado y
-  persiste esa asignación en el store JSON.
- 	- Por qué se implementó: representar un paso dependiente que requiere
-  que `ProvisionUser` ya haya creado el usuario; sirve para probar la
-  coherencia y la compensación cuando falla.
- 	- Entradas: `permissions` (list[str], por defecto `['read']`),
-  `fail` (bool) para simulación de errores.
- 	- Precondición: `context['user']` debe existir; si no, lanza error.
- 	- Salida/efecto: añade `context['permissions']` y guarda en el store
-  JSON bajo `permissions[user_id]`.
- 	- Rollback: elimina `context['permissions']` y borra
-  `permissions[user_id]` del store.
+1. **Provisionar usuario** - Crea el usuario en la BD
+2. **Asignar permisos** - Da permisos al usuario
+3. **Crear cuota** - Asigna límites de almacenamiento y operaciones
 
-- Step 3: CreateQuota
- 	- Qué hace: crea/adjunta una cuota al usuario actual y la persiste en
-  el store JSON.
- 	- Por qué se implementó: simular la creación de un recurso asociado
-  (cuota) y validar que también puede revertirse.
- 	- Entradas: `quota_values` (dict; por defecto `{'storage_gb':10,...}`),
-  `quota_id` (str opcional), `fail` (bool para pruebas).
- 	- Precondición: `context['user']` debe existir.
- 	- Salida/efecto: añade `context['quota']` y escribe en
-  `quotas[quota_id]` del store JSON.
- 	- Rollback: elimina `context['quota']` y borra la cuota del store.
+Si cualquier paso falla, el sistema revierte todos los pasos anteriores automáticamente.
 
-Cada Step implementa la interfaz `execute(context)` y
-`rollback(context)`. La persistencia usa `src/saga/data/saga_store.json`
-como mock backend (lectura/escritura JSON), mediante helpers internos
-`_read_store()` / `_write_store()`.
+## Componentes desarrollados
 
-### Patrones implementados
+### Orquestador (orchestrator.py)
 
-1) Factory
- - Implementación: `src/saga/factory.py` con `StepFactory`.
- - Métodos relevantes:
-  - `StepFactory.register(name, step_cls)`: registra una clase de Step
-   bajo una clave textual.
-  - `StepFactory.create(step_type, *args, **kwargs)`: instancia la
-   clase registrada pasando parámetros. Lanza `ValueError` si no
-   existe el tipo.
-  - `register_defaults()`: función que registra los pasos por defecto
-   (`provision_user`, `assign_permissions`, `create_quota`).
- - Por qué: desacopla la creación de objetos Step del orquestador;
-  permite construir flujos a partir de nombres y parámetros sin
-  depender de clases concretas.
+El componente principal que coordina la ejecución de pasos. Tiene lógica de:
 
-2) Mediator (Orchestrator)
- - Implementación: `src/saga/mediator.py` con la clase `Mediator`.
- - Métodos relevantes:
-  - `Mediator.register(step)`: añade una instancia de Step a la
-   secuencia de ejecución.
-  - `Mediator.execute_all(context)`: ejecuta todos los steps en
-   orden. Mantiene una lista `executed` de pasos completados; si un
-   step falla, itera `executed` en orden inverso y llama
-   `rollback(context)` en cada uno, registrando errores de
-   rollback pero sin perdernos el rollback completo. Finalmente
-   vuelve a lanzar la excepción original.
- - Por qué: centraliza la coordinación del flujo y garantiza la
-  compensación (rollback) en caso de fallo en cualquier paso.
++ Estados de saga (PENDING, RUNNING, SUCCEEDED, FAILED, COMPENSATING, COMPENSATED)
++ Ejecución secuencial de pasos
++ Mecanismo de compensación al detectar fallas
++ Reintentos básicos (hasta 5 intentos con sleep de 2s)
 
-### Ejemplos de uso / comandos (PowerShell)
+### Pasos (steps.py)
 
-1) Ejecutar el demo (happy path) usando el orquestador:
+Cada paso implementa dos métodos principales:
 
-```powershell
-py -3 -c "from src.saga.orchestrator import run_demo; print(run_demo(False))"
-```
++ `execute()`: realiza la operación principal
++ `rollback()`: deshace la operación si algo falla después
 
-2) Ejecutar el script verbose que fuerza fallo en `AssignPermissions`
-  (muestra rollback):
+Los tres pasos creados:
 
-```powershell
-py -3 scripts\check_rollback_verbose.py
-```
++ ProvisionUser
++ AssignPermissions
++ CreateQuota
 
-3) Ejecutar la suite de tests (pytest):
+Todos se comunican con el broker de mensajes usando RPC.
 
-```powershell
-py -3 -m pytest -q
-```
+### Estados (state.py)
 
-- Los Steps persistentes escriben en `src/saga/data/saga_store.json`.
-- En los tests se parchea `steps.STORE_PATH` a un `tmp_path` para evitar
- tocar el store real y poder verificar efectos de execute/rollback.
+Un enum sencillo con los estados posibles del SAGA. Nos ayuda a trackear en qué punto está cada flujo.
 
----
+### Message Broker (message_broker.py)
+
+Worker que escucha comandos en RabbitMQ y ejecuta operaciones en las bases de datos SQLite (users.db, permissions.db, quotas.db). También maneja las operaciones de rollback.
+
+### Factory (factory.py)
+
+Patrón factory para crear instancias de los pasos según el tipo solicitado.
+
+## Cómo funciona el flujo
+
+1. El orquestador recibe datos del usuario
+2. Crea los tres pasos usando el factory
+3. Ejecuta cada paso en orden
+4. Si un paso falla:
+   + Intenta hasta 5 veces
+   + Si sigue fallando, inicia compensación
+   + Llama al rollback() de cada paso completado en orden inverso
+5. Si todo sale bien, marca el SAGA como SUCCEEDED
