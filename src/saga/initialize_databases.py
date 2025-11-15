@@ -1,10 +1,16 @@
 import sqlite3
+import os
 
 database_types = ["users", "permissions", "quotas"]
 
 
 def get_connection(db_type):
-    return sqlite3.connect(f'db/{db_type}.db')
+    # Crear directorio db si no existe
+    db_dir = os.path.join(os.path.dirname(__file__), 'db')
+    os.makedirs(db_dir, exist_ok=True)
+
+    db_path = os.path.join(db_dir, f'{db_type}.db')
+    return sqlite3.connect(db_path)
 
 
 def initialize_database_by_type(db_types):
