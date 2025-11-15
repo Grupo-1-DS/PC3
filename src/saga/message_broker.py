@@ -8,6 +8,7 @@ EXCHANGE_NAME = "saga_exchange"
 COMMAND_QUEUE_NAME = "saga_commands"
 DLQ_QUEUE_NAME = "saga_dlq"
 raw = os.getenv("FAILS", "false").lower()
+NUMBER_RANDOM = os.getenv("RANDOM", "false").lower() == "true"
 TEST_FAILS = raw == "true"
 
 
@@ -80,12 +81,15 @@ def handle_provision_user(data: dict) -> dict:
     user_name = data.get('name')
     user_email = data.get('email')
     fail = data.get('fail')
-    num = random.randint(12, 16)
+    num = random.randint(12, 16) if NUMBER_RANDOM else None
 
     if (TEST_FAILS):
         return {'status': 'error', 'detail': f'Fallo al registrar usuario(default)'}
 
-    if (fail and num > 14):
+    if (fail and not NUMBER_RANDOM):
+        return {'status': 'error', 'detail': f'Fallo al registrar usuario(default)'}
+
+    if (fail and num is not None and num < 14):
         return {'status': 'error', 'detail': f'Fallo al registrar usuario(default)'}
 
     try:
@@ -107,13 +111,16 @@ def handle_assign_permissions(data: dict) -> dict:
     user_id = data.get('id')
     permissions = data.get('permissions')
     fail = data.get('fail')
-    num = random.randint(12, 16)
+    num = random.randint(12, 16) if NUMBER_RANDOM else None
 
     if (TEST_FAILS):
         return {'status': 'error', 'detail': f'Fallo al registrar usuario(default)'}
 
-    if (fail and num < 14):
+    if (fail and not NUMBER_RANDOM):
         return {'status': 'error', 'detail': f'Fallo al asignar permisos(default)'}
+
+    if (fail and num is not None and num < 14):
+        return {'status': 'error', 'detail': f'Fallo al registrar usuario(default)'}
 
     try:
         conn = get_connection("permissions")
@@ -139,13 +146,16 @@ def handle_create_quota(data: dict) -> dict:
     storage_gb = data.get('storage_gb')
     ops_per_month = data.get('ops_per_month')
     fail = data.get('fail')
-    num = random.randint(12, 16)
+    num = random.randint(12, 16) if NUMBER_RANDOM else None
 
     if (TEST_FAILS):
         return {'status': 'error', 'detail': f'Fallo al crear cuota(default)'}
 
-    if (fail and num < 14):
+    if (fail and not NUMBER_RANDOM):
         return {'status': 'error', 'detail': f'Fallo al crear cuota(default)'}
+
+    if (fail and num is not None and num < 14):
+        return {'status': 'error', 'detail': f'Fallo al registrar usuario(default)'}
 
     try:
         conn = get_connection("quotas")

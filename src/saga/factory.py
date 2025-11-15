@@ -1,5 +1,5 @@
 from typing import Dict, Type
-from steps import Step, ProvisionUser, AssignPermissions, CreateQuota
+from .steps import Step, ProvisionUser, AssignPermissions, CreateQuota
 
 class StepFactory:
     @classmethod
