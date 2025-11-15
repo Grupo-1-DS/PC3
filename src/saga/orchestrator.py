@@ -2,6 +2,7 @@ from factory import StepFactory
 from state import SagaState
 from steps import Step
 
+
 class Saga:
     def __init__(self, saga_id: str):
         self.id = saga_id

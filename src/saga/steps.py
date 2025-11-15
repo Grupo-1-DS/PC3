@@ -6,11 +6,14 @@ import sqlite3
 import uuid
 import pika
 
+
 def get_connection(db_type):
-        return sqlite3.connect(f'db/{db_type}.db')
+    return sqlite3.connect(f'db/{db_type}.db')
+
 
 def rpc_call(event: dict, timeout: float = 5.0) -> dict:
-    connection = pika.BlockingConnection(pika.ConnectionParameters('localhost'))
+    connection = pika.BlockingConnection(
+        pika.ConnectionParameters('localhost'))
     channel = connection.channel()
 
     result = channel.queue_declare(queue='', exclusive=True)
@@ -24,7 +27,8 @@ def rpc_call(event: dict, timeout: float = 5.0) -> dict:
             response['body'] = json.loads(body)
             response['received'] = True
 
-    channel.basic_consume(queue=callback_queue, on_message_callback=on_response, auto_ack=True)
+    channel.basic_consume(queue=callback_queue,
+                          on_message_callback=on_response, auto_ack=True)
 
     channel.basic_publish(
         exchange='saga_exchange',
@@ -45,6 +49,7 @@ def rpc_call(event: dict, timeout: float = 5.0) -> dict:
 
     return response['body']
 
+
 class Step(ABC):
     @abstractmethod
     def execute(self, *args, **kwargs) -> Any:
@@ -56,165 +61,138 @@ class Step(ABC):
 
 
 class ProvisionUser(Step):
-
-    def __init__(self, step_name="ProvisionUser", data=None, fail=False):
+    def __init__(self, step_name="ProvisionUser", data=None):
         self.name = step_name
         self.data = data or {}
-        self.fail = fail
 
     def execute(self) -> None:
-        if self.fail:
+        fail = self.data.get("fail")[0]
+
+        if fail:
             raise RuntimeError("ProvisionUser falló")
-
-        user_id = self.data["user"]["id"] or None
-        user_name = self.data["user"]["name"]
-        user_email = self.data["user"]["email"]
-
-        conn = get_connection("users")
-        cursor = conn.cursor()
-
-        try:
-            cursor.execute(
-                "INSERT INTO users (id, name, email) VALUES (?, ?, ?)",
-                (user_id, user_name, user_email),
-            )
-            conn.commit()
-                        
-            result = rpc_call(
-                {"type": "ProvisionUser", "data": {"id": user_id}})
-            
-            if(result.get('status') != 'ok'):
-                raise RuntimeError(f"Error al procesar el registro en broker: {result}")
-
-            print("     - Datos de usuario insertado en tabla users:", user_id, user_name, user_email)
-
-        except Exception as e:
-            raise RuntimeError(f"Fallo al registrar usuario: {e}")
-        finally:
-            conn.close()
-            
-    def rollback(self):
-        conn = get_connection("users")
-        cursor = conn.cursor()
-        try:
-            user_id = self.data["user"]["id"]
-            cursor.execute("DELETE FROM users WHERE id=?", (user_id,))
-            conn.commit()
-
-            print(f"     - Rollback: Usuario eliminado con ID {user_id} de tabla users")
-        except Exception as e:
-            print(f"Fallo al hacer rollback de ProvisionUser: {e}")
-        finally:
-            conn.close()
-
-
-
-class AssignPermissions(Step):
-
-    def __init__(self, step_name="AssignPermissions", data=None, fail=False):
-        self.name = step_name
-        self.data = data or {}
-        self.fail = fail
-
-    def execute(self) -> None:
-        if self.fail:
-            raise RuntimeError("AssignPermissions falló")
 
         user_id = self.data["user"]["id"]
         user_name = self.data["user"]["name"]
+        user_email = self.data["user"]["email"]
+
+        # Enviar al message broker
+        result = rpc_call({
+            "type": "ProvisionUser",
+            "data": {
+                "id": user_id,
+                "name": user_name,
+                "email": user_email,
+            }
+        })
+        if result.get('status') != 'ok':
+            raise RuntimeError(
+                f"Error al procesar el registro en broker: {result}")
+        # Guardar el id real generado por el broker para rollback
+        self.data["db_id"] = result.get("id", user_id)
+        print("     - Solicitud de creación de usuario enviada al broker:",
+              user_id, user_name, user_email, "(db_id:", self.data["db_id"], ")")
+
+    def rollback(self) -> None:
+        db_id = self.data.get("db_id")
+        if db_id is None:
+            print("     - Rollback: No se tiene db_id para eliminar usuario")
+            return
+        result = rpc_call({
+            "type": "CompositeProvisionUser",
+            "data": {"db_id": db_id}
+        })
+        if result and result.get("status") == "ok":
+            print(f"     - Rollback exitoso usuario: {db_id}")
+        else:
+            print(f"     - Fallo rollback usuario: {db_id} -> {result}")
+
+
+class AssignPermissions(Step):
+    def __init__(self, step_name="AssignPermissions", data=None):
+        self.name = step_name
+        self.data = data or {}
+
+    def execute(self) -> None:
+        fail = self.data.get("fail")[1]
+        if fail:
+            raise RuntimeError("AssignPermissions falló")
+
+        user_id = self.data["user"]["id"]
         permissions = self.data["permissions"]
 
-        conn = get_connection("permissions")
-        cursor = conn.cursor()
+        # Enviar al message broker
+        result = rpc_call({
+            "type": "AssignPermissions",
+            "data": {
+                "id": user_id,
+                "permissions": permissions,
+            }
+        })
+        if result.get('status') != 'ok':
+            raise RuntimeError(
+                f"Error al procesar el registro en broker: {result}")
+        self.data["db_id"] = result.get("id")
+        print(
+            f"     - Solicitud de asignación de permisos enviada al broker: {user_id}, {permissions} (db_id: {self.data['db_id']})")
 
-        try:
-            cursor.execute(
-                "INSERT INTO permissions (user_id, permissions) VALUES (?, ?)",
-                (user_id, json.dumps(permissions)),
-            )
-
-            conn.commit()
-
-            result = rpc_call(
-                {"type": "AssignPermissions", "data": {"id": user_id}})
-            
-            if(result.get('status') != 'ok'):
-                raise RuntimeError(f"Error al procesar el registro en broker: {result}")
-
-            print(f"     - Permisos asignados a user {user_name} en tabla permissions:", permissions)
-
-        except Exception as e:
-            raise RuntimeError(f"Fallo al asignar permisos: {e}")
-
-        finally:
-            conn.close()
-        
-        
     def rollback(self) -> None:
-        conn = get_connection("permissions")
-        cursor = conn.cursor()
-        try:
-            user_id = self.data["user"]["id"]
-            cursor.execute("DELETE FROM permissions WHERE user_id=?", (user_id,))
-            conn.commit()
-
-            print(f"     - Rollback: Permisos eliminados para user {user_id} en tabla permissions")
-        except Exception as e:
-            print(f"Fallo al hacer rollback de AssignPermissions: {e}")
-        finally:
-            conn.close()
+        db_id = self.data.get("db_id")
+        if db_id is None:
+            print("     - Rollback: No se tiene db_id para eliminar permisos")
+            return
+        result = rpc_call({
+            "type": "CompositeAssignPermissions",
+            "data": {"db_id": db_id}
+        })
+        if result and result.get("status") == "ok":
+            print(f"     - Rollback exitoso permisos: {db_id}")
+        else:
+            print(f"     - Fallo rollback permisos: {db_id} -> {result}")
 
 
 class CreateQuota(Step):
-
-    def __init__(self, step_name="CreateQuota", data=None, fail=False):
+    def __init__(self, step_name="CreateQuota", data=None):
         self.name = step_name
         self.data = data or {}
-        self.fail = fail
 
     def execute(self) -> None:
-        if self.fail:
+        fail = self.data.get("fail")[2]
+
+        if fail:
             raise RuntimeError("CreateQuota fallló")
 
-        quota_id = str(uuid.uuid4())
+        quota_id = self.data["quota"].get("quota_id", str(uuid.uuid4()))
         user_id = self.data["user"]["id"]
         storage_gb = self.data["quota"]["storage_gb"]
         ops_per_month = self.data["quota"]["ops_per_month"]
 
-        
-        conn = get_connection("quotas")
-        cursor = conn.cursor()
+        # Enviar al message broker
+        result = rpc_call({
+            "type": "CreateQuota",
+            "data": {
+                "id": user_id,
+                "quota_id": quota_id,
+                "storage_gb": storage_gb,
+                "ops_per_month": ops_per_month,
+            }
+        })
+        if result.get('status') != 'ok':
+            raise RuntimeError(
+                f"Error al procesar la quota en el broker: {result}")
+        self.data["db_id"] = result.get("id")
+        print(
+            f"     - Solicitud de creación de quota enviada al broker: {quota_id}, {user_id}, {storage_gb}, {ops_per_month} (db_id: {self.data['db_id']})")
 
-        try:
-            cursor.execute(
-                "INSERT INTO quotas (id, user_id, storage_gb, ops_per_month) VALUES (?, ?, ?, ?)",
-                (quota_id, user_id, storage_gb, ops_per_month),
-            )
-
-            conn.commit()
-
-            result = rpc_call(
-                {"type": "CreateQuota",
-                "data": {"id": user_id,}})
-
-            if(result.get('status') != 'ok'):
-                raise RuntimeError(f"Error al procesar la quota en el broker: {result}")
-            
-            print(f"     - Quota creada con ID {quota_id} para user {user_id} en tabla quotas")
-
-        except Exception as e:
-            raise RuntimeError(f"Fallo al crear quota: {e}")
-
-    def rollback(self, context: Dict[str, Any]) -> None:
-        conn = get_connection("quotas")
-        cursor = conn.cursor()
-        try:
-            user_id = self.data["user"]["id"]
-            cursor.execute("DELETE FROM quotas WHERE user_id=?", (user_id,))
-            conn.commit()
-
-            print(f"     - Rollback: Quota eliminada para user {user_id} en tabla quotas")
-        except Exception as e:
-            print(f"Fallo al hacer rollback de CreateQuota: {e}")
-        finally:
-            conn.close()
+    def rollback(self) -> None:
+        db_id = self.data.get("db_id")
+        if db_id is None:
+            print("     - Rollback: No se tiene db_id para eliminar quota")
+            return
+        result = rpc_call({
+            "type": "CompositeCreateQuota",
+            "data": {"db_id": db_id}
+        })
+        if result and result.get("status") == "ok":
+            print(f"     - Rollback exitoso quota: {db_id}")
+        else:
+            print(f"     - Fallo rollback quota: {db_id} -> {result}")

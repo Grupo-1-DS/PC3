@@ -2,18 +2,20 @@ import sqlite3
 
 database_types = ["users", "permissions", "quotas"]
 
+
 def get_connection(db_type):
-        return sqlite3.connect(f'db/{db_type}.db')
+    return sqlite3.connect(f'db/{db_type}.db')
+
 
 def initialize_database_by_type(db_types):
     for db_type in db_types:
         conn = get_connection(db_type)
         cursor = conn.cursor()
-        
-        if(db_type == "users"):
+
+        if (db_type == "users"):
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS users (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    id INTEGER PRIMARY KEY,
                     name TEXT NOT NULL,
                     email TEXT NOT NULL
                 )
@@ -26,18 +28,19 @@ def initialize_database_by_type(db_types):
                     processed INTEGER DEFAULT 0
                 )
             ''')
-        elif(db_type == "permissions"):
+        elif (db_type == "permissions"):
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS permissions (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
                     user_id TEXT,
                     permissions TEXT,
                     FOREIGN KEY(user_id) REFERENCES users(id)
                 )
             ''')
-        elif(db_type == "quotas"):
+        elif (db_type == "quotas"):
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS quotas (
-                    id TEXT PRIMARY KEY,
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
                     user_id TEXT,
                     storage_gb INTEGER,
                     ops_per_month INTEGER,
@@ -47,6 +50,7 @@ def initialize_database_by_type(db_types):
 
         conn.commit()
         conn.close()
+
 
 if __name__ == "__main__":
     print("=====Inicializando bases de datos=====")
