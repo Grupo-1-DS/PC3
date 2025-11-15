@@ -1,15 +1,5 @@
-"""
-Demo simple del SAGA Orchestrator
-
-Este demo muestra dos casos básicos:
-1. Un SAGA exitoso (todos los pasos se completan)
-2. Un SAGA fallido (falla un paso, se ejecuta compensación)
-
-Para tests más exhaustivos con métricas, ejecuta:
-    pytest tests/unit/test_metrics.py -v -s
-"""
-from .orchestrator import SagaOrchestrator
-from .metrics import saga_metrics
+from orchestrator import SagaOrchestrator
+from metrics import saga_metrics
 import uuid
 
 

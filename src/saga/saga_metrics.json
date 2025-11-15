@@ -1,0 +1,12 @@
+{
+  "total_sagas": 2,
+  "success_rate": "50.00%",
+  "compensation_rate": "50.00%",
+  "avg_execution_time": "6.57s",
+  "avg_retries_per_saga": "2.50",
+  "total_dlq_messages": 1,
+  "avg_compensation_time": "0.06s",
+  "step_failures": {
+    "CreateQuota": 1
+  }
+}
