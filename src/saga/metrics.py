@@ -19,16 +19,13 @@ class SagaMetrics:
         }
 
     def record_saga_start(self):
-        """Registra el inicio de un nuevo SAGA"""
         self.data['total_sagas'] += 1
 
     def record_saga_success(self, execution_time):
-        """Registra un SAGA exitoso"""
         self.data['succeeded'] += 1
         self.data['execution_times'].append(execution_time)
 
     def record_saga_failure(self, failed_step, execution_time):
-        """Registra un SAGA fallido"""
         self.data['failed'] += 1
         self.data['compensated'] += 1
         self.data['execution_times'].append(execution_time)
@@ -38,11 +35,9 @@ class SagaMetrics:
         self.data['step_failures'][failed_step] += 1
 
     def record_retry(self):
-        """Registra un intento de retry"""
         self.data['total_retries'] += 1
 
     def record_dlq(self):
-        """Registra un mensaje enviado al DLQ"""
         self.data['total_dlq_messages'] += 1
 
     def record_compensation_time(self, compensation_time):
@@ -184,7 +179,7 @@ class SagaMetrics:
         trends = self.calculate_trends()
 
         print("\n" + "="*60)
-        print("🛡️  INFORME DE RESILIENCIA")
+        print("INFORME DE RESILIENCIA")
         print("="*60)
         print(f"Total de fallos:              {resilience.get('total_failures', 0)}")
         print(f"Tasa de recuperación:         {resilience.get('recovery_rate', '0%')}")
@@ -202,11 +197,9 @@ class SagaMetrics:
         print("="*60 + "\n")
 
     def save_with_history(self, filename='saga_metrics.json'):
-        """Guarda métricas actuales y preserva las anteriores como historial"""
         import os
         import shutil
 
-        # Si existe el archivo actual, guardarlo como "previous"
         if os.path.exists(filename):
             shutil.copy(filename, filename.replace('.json', '_previous.json'))
 
@@ -214,7 +207,6 @@ class SagaMetrics:
         self.save_to_file(filename)
 
     def reset(self):
-        """Reinicia todas las métricas"""
         self.__init__()
 
 
